@@ -3,6 +3,7 @@ package models
 import (
 	"log"
 	"strconv"
+	"time"
 
 	"golang.org/x/net/context"
 
@@ -229,6 +230,8 @@ func (r *GormWorkItemRepository) listItemsFromDB(ctx context.Context, criteria c
 
 // List returns work item selected by the given criteria.Expression, starting with start (zero-based) and returning at most limit items
 func (r *GormWorkItemRepository) List(ctx context.Context, criteria criteria.Expression, start *int, limit *int) ([]*app.WorkItem, uint64, error) {
+	startTime := time.Now()
+
 	result, count, err := r.listItemsFromDB(ctx, criteria, start, limit)
 	if err != nil {
 		return nil, 0, err
@@ -247,5 +250,7 @@ func (r *GormWorkItemRepository) List(ctx context.Context, criteria criteria.Exp
 		}
 	}
 
+	elapsed := time.Since(startTime)
+	log.Printf("!!!!!!! List() took %s for %d WITs", elapsed, len(res))
 	return res, count, nil
 }
