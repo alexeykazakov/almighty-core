@@ -120,8 +120,13 @@ func (s *workItemLinkSuite) SetupSuite() {
 	require.NotNil(s.T(), s.workItemRelsLinksCtrl)
 
 	require.Nil(s.T(), err)
-	s.svc = testsupport.ServiceAsUser("TestWorkItem-Service", almtoken.NewManagerWithPrivateKey(priv), initTestIdenity(DB))
+<<<<<<< 0f9a219d2390f962f20d3479ca088663e6c555e4
+	s.svc = testsupport.ServiceAsUser("TestWorkItem-Service", almtoken.NewManagerWithPrivateKey(priv), testIdentity)
 	require.NotNil(s.T(), s.svc)
+=======
+	s.workItemSvc = testsupport.ServiceAsUser("TestWorkItem-Service", almtoken.NewManagerWithPrivateKey(priv), initTestIdenity(DB))
+	require.NotNil(s.T(), s.workItemSvc)
+>>>>>>> Create Keycloak resource when space created
 	s.workItemCtrl = NewWorkitemController(svc, gormapplication.NewGormDB(DB))
 	require.NotNil(s.T(), s.workItemCtrl)
 }

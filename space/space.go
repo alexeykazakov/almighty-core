@@ -65,7 +65,7 @@ type Repository interface {
 	Save(ctx context.Context, space *Space) (*Space, error)
 	Load(ctx context.Context, ID satoriuuid.UUID) (*Space, error)
 	Delete(ctx context.Context, ID satoriuuid.UUID) error
-	LoadByOwnerAndName(ctx context.Context, userId *satoriuuid.UUID, spaceName *string) (*Space, error)
+	LoadByOwnerAndName(ctx context.Context, userID *satoriuuid.UUID, spaceName *string) (*Space, error)
 	List(ctx context.Context, start *int, length *int) ([]*Space, uint64, error)
 	Search(ctx context.Context, q *string, start *int, length *int) ([]*Space, uint64, error)
 }
