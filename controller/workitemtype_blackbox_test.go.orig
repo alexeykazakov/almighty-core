@@ -98,8 +98,13 @@ func (s *workItemTypeSuite) SetupTest() {
 	require.NotNil(s.T(), s.linkCatCtrl)
 
 	priv, _ := almtoken.ParsePrivateKey([]byte(almtoken.RSAPrivateKey))
-	s.svc = testsupport.ServiceAsUser("workItemLinkSpace-Service", almtoken.NewManagerWithPrivateKey(priv), initTestIdenity(DB))
+<<<<<<< 0f9a219d2390f962f20d3479ca088663e6c555e4
+	s.svc = testsupport.ServiceAsUser("workItemLinkSpace-Service", almtoken.NewManagerWithPrivateKey(priv), testsupport.TestIdentity)
 	s.spaceCtrl = NewSpaceController(svc, gormapplication.NewGormDB(s.DB))
+=======
+	s.svcSpace = testsupport.ServiceAsUser("workItemLinkSpace-Service", almtoken.NewManagerWithPrivateKey(priv), initTestIdenity(DB))
+	s.spaceCtrl = NewSpaceController(svc, gormapplication.NewGormDB(DB), witbConfiguration)
+>>>>>>> Create Keycloak resource when space created
 	require.NotNil(s.T(), s.spaceCtrl)
 }
 
@@ -340,9 +345,14 @@ func (s *workItemTypeSuite) TestListSourceAndTargetLinkTypes() {
 	s.T().Log("Created work item link category")
 
 	// Create work item link space
+<<<<<<< 0f9a219d2390f962f20d3479ca088663e6c555e4
 	spacePayload := CreateSpacePayload("some-link-space", "description")
 	_, space := test.CreateSpaceCreated(s.T(), s.svc.Context, s.svc, s.spaceCtrl, spacePayload)
 	s.T().Log("Created space")
+=======
+	spacePayload := CreateSpacePayload("some-test-link-space", "description")
+	_, space := test.CreateSpaceCreated(s.T(), s.svcSpace.Context, s.svcSpace, s.spaceCtrl, spacePayload)
+>>>>>>> Create Keycloak resource when space created
 
 	// Create work item link type
 	animalLinksToBugStr := "animal-links-to-bug"

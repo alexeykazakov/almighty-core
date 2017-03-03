@@ -70,7 +70,7 @@ func TestTestUserTokenObtainedFromKeycloakOK(t *testing.T) {
 	resource.Require(t, resource.Database)
 	service, controller := createControler(t)
 	_, result := test.GenerateLoginOK(t, nil, service, controller)
-	assert.Len(t, result, 1, "The size of token array is not 1")
+	assert.Len(t, result, 2, "The size of token array is not 2")
 	for _, data := range result {
 		validateToken(t, data, controller)
 	}
@@ -80,7 +80,7 @@ func TestRefreshTokenUsingValidRefreshTokenOK(t *testing.T) {
 	resource.Require(t, resource.Database)
 	service, controller := createControler(t)
 	_, result := test.GenerateLoginOK(t, nil, service, controller)
-	if len(result) != 1 || result[0].Token.RefreshToken == nil {
+	if len(result) != 2 || result[0].Token.RefreshToken == nil || result[1].Token.RefreshToken == nil {
 		t.Fatal("Can't get the test user token")
 	}
 	refreshToken := result[0].Token.RefreshToken

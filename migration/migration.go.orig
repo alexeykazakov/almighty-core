@@ -239,14 +239,16 @@ func getMigrations() migrations {
 	// Version 40
 	m = append(m, steps{executeSQLFile("040-add-space-id-wi-wit-tq.sql", space.SystemSpace.String())})
 
+<<<<<<< 0f9a219d2390f962f20d3479ca088663e6c555e4
 	// version 41
 	m = append(m, steps{executeSQLFile("041-unique-area-name-create-new-area.sql")})
 
 	// Version 42
 	m = append(m, steps{executeSQLFile("042-work-item-link-revisions.sql")})
-
-	// Version 43
-	m = append(m, steps{executeSQLFile("043-space-resources.sql")})
+=======
+	// Version 41
+	m = append(m, steps{executeSQLFile("041-space-resources.sql")})
+>>>>>>> Create Keycloak resource when space created
 
 	// Version N
 	//

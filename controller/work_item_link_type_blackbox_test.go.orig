@@ -84,8 +84,13 @@ func (s *workItemLinkTypeSuite) SetupSuite() {
 	s.typeCtrl = NewWorkitemtypeController(svc, gormapplication.NewGormDB(DB))
 	require.NotNil(s.T(), s.typeCtrl)
 	priv, _ := almtoken.ParsePrivateKey([]byte(almtoken.RSAPrivateKey))
-	s.svc = testsupport.ServiceAsUser("workItemLinkSpace-Service", almtoken.NewManagerWithPrivateKey(priv), initTestIdenity(DB))
+<<<<<<< 0f9a219d2390f962f20d3479ca088663e6c555e4
+	s.svc = testsupport.ServiceAsUser("workItemLinkSpace-Service", almtoken.NewManagerWithPrivateKey(priv), testsupport.TestIdentity)
 	s.spaceCtrl = NewSpaceController(svc, gormapplication.NewGormDB(DB))
+=======
+	s.svcSpace = testsupport.ServiceAsUser("workItemLinkSpace-Service", almtoken.NewManagerWithPrivateKey(priv), initTestIdenity(DB))
+	s.spaceCtrl = NewSpaceController(svc, gormapplication.NewGormDB(DB), wiltConfiguration)
+>>>>>>> Create Keycloak resource when space created
 	require.NotNil(s.T(), s.spaceCtrl)
 	s.spaceName = "test-space" + uuid.NewV4().String()
 	s.categoryName = "test-workitem-category" + uuid.NewV4().String()
