@@ -102,7 +102,7 @@ func (s *workItemLinkSuite) SetupSuite() {
 
 	svc = goa.New("TestWorkItemLinkSpace-Service")
 	require.NotNil(s.T(), svc)
-	s.spaceCtrl = NewSpaceController(svc, gormapplication.NewGormDB(DB), wiConfiguration)
+	s.spaceCtrl = NewSpaceController(svc, gormapplication.NewGormDB(DB), wiConfiguration, &DummyResourceManager{})
 	require.NotNil(s.T(), s.spaceCtrl)
 
 	svc = goa.New("TestWorkItemType-Service")
@@ -119,8 +119,10 @@ func (s *workItemLinkSuite) SetupSuite() {
 	s.workItemRelsLinksCtrl = NewWorkItemRelationshipsLinksController(svc, gormapplication.NewGormDB(DB))
 	require.NotNil(s.T(), s.workItemRelsLinksCtrl)
 
+	// create a test identity
+	testIdentity, err := testsupport.CreateTestIdentity(s.db, "test user", "test provider")
 	require.Nil(s.T(), err)
-	s.svc = testsupport.ServiceAsUser("TestWorkItem-Service", almtoken.NewManagerWithPrivateKey(priv), initTestIdenity(DB))
+	s.svc = testsupport.ServiceAsUser("TestWorkItem-Service", almtoken.NewManagerWithPrivateKey(priv), testIdentity)
 	require.NotNil(s.T(), s.svc)
 	s.workItemCtrl = NewWorkitemController(svc, gormapplication.NewGormDB(DB))
 	require.NotNil(s.T(), s.workItemCtrl)
