@@ -3,6 +3,8 @@ package login
 import (
 	"crypto/md5"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -74,11 +76,26 @@ type keycloakTokenClaims struct {
 var stateReferer = map[string]string{}
 var mapLock sync.RWMutex
 
+type keycloakSessionClaims struct {
+	SessionState  string `json:"session_state"`
+	ClientSession string `json:"client_session"`
+	jwt.StandardClaims
+}
+
+// TODO fix
+var origReferal string
+
 // Perform performs authenticatin
 func (keycloak *KeycloakOAuthProvider) Perform(ctx *app.AuthorizeLoginContext, authEndpoint string, tokenEndpoint string) error {
 	state := ctx.Params.Get("state")
 	code := ctx.Params.Get("code")
+	github := ctx.Params.Get("gtihub")
 	referer := ctx.RequestData.Header.Get("Referer")
+
+	if github != "" {
+		ctx.ResponseData.Header().Set("Location", origReferal)
+		return ctx.TemporaryRedirect()
+	}
 
 	if code != "" {
 		// After redirect from oauth provider
@@ -119,6 +136,7 @@ func (keycloak *KeycloakOAuthProvider) Perform(ctx *app.AuthorizeLoginContext, a
 
 		}
 
+		// Save referal
 		referelURL, err := url.Parse(knownReferer)
 		if err != nil {
 			return redirectWithError(ctx, knownReferer, err.Error())
@@ -128,7 +146,21 @@ func (keycloak *KeycloakOAuthProvider) Perform(ctx *app.AuthorizeLoginContext, a
 		if err != nil {
 			return redirectWithError(ctx, knownReferer, err.Error())
 		}
-		ctx.ResponseData.Header().Set("Location", referelURL.String())
+
+		origReferal = referelURL.String()
+
+		// Link github
+		clientID := "fabric8-online-platform"
+		brokerEndpoint := "http://sso.prod-preview.openshift.io/auth/realms/fabric8/broker"
+
+		redURL, err := getProviderURL(ctx, keycloakToken.AccessToken, keycloak.TokenManager.PublicKey(), "github", brokerEndpoint, clientID)
+		fmt.Println("!!!!!: URL: " + redURL)
+		fmt.Println("!!!!!: Token: " + keycloakToken.AccessToken)
+		if err != nil {
+			return redirectWithError(ctx, knownReferer, err.Error())
+		}
+
+		ctx.ResponseData.Header().Set("Location", redURL)
 		return ctx.TemporaryRedirect()
 	}
 
@@ -153,6 +185,52 @@ func (keycloak *KeycloakOAuthProvider) Perform(ctx *app.AuthorizeLoginContext, a
 
 	ctx.ResponseData.Header().Set("Location", redirectURL)
 	return ctx.TemporaryRedirect()
+}
+
+func getProviderURL(ctx *app.AuthorizeLoginContext, accessToken string, publicKey *rsa.PublicKey, provider string, brokerEndpoint string, clientID string) (string, error) {
+
+	// {auth-server-root}/auth/realms/{realm}/broker/{provider}/linking?client_id={id}&redirect_uri={uri}&nonce={nonce}&hash={hash}
+	// 	clientID := "fabric8-online-platform"
+	// brokerEndpoint := "http://sso.prod-preview.openshift.io/auth/realms/fabric8/broker"
+
+	redirectURI := rest.AbsoluteURL(ctx.RequestData, "/api/login/authorize?"+provider+"=true")
+	// redirectURIEncoded := base64.StdEncoding.EncodeToString([]byte(redirectURI))
+
+	token, err := jwt.ParseWithClaims(accessToken, &keycloakSessionClaims{}, func(t *jwt.Token) (interface{}, error) {
+		return publicKey, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if !token.Valid {
+		return "", errors.New("Token is not valid")
+	}
+	claims := token.Claims.(*keycloakSessionClaims)
+
+	nonce := uuid.NewV4().String()
+
+	// String input = nonce + token.getSessionState() + clientSessionId + provider;
+	s := nonce + claims.SessionState + claims.ClientSession + provider
+	h := sha256.New()
+	h.Write([]byte(s))
+	// sha256Hash := hex.EncodeToString(h.Sum(nil))
+	hash := base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+	// res := brokerEndpoint + "/" + provider + "/link?client_id=" + clientID + "&redirect_uri=" + redirectURI + "&nonce=" + nonce + "&hash=" + hash
+
+	linkingURL, err := url.Parse(brokerEndpoint + "/" + provider + "/link")
+	if err != nil {
+		return "", err
+	}
+
+	parameters := url.Values{}
+	parameters.Add("client_id", clientID) // Temporary keep the old "token" param. We will drop this param as soon as UI adopt the new json param.
+	parameters.Add("redirect_uri", redirectURI)
+	parameters.Add("nonce", nonce)
+	parameters.Add("hash", hash)
+	linkingURL.RawQuery = parameters.Encode()
+
+	return linkingURL.String(), nil
 }
 
 func encodeToken(referal *url.URL, outhToken *oauth2.Token) error {
