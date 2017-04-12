@@ -35,7 +35,7 @@ func (s *TestPolicySuite) TearDownSuite() {
 }
 
 func (s *TestPolicySuite) TestGetPolicyOK() {
-	policy, policyID := createPermissionWithPolicy(s)
+	policy, policyID := authtest.CreatePermissionWithPolicy(s.T(), configuration)
 
 	r := &goa.RequestData{
 		Request: &http.Request{Host: "domain.io"},
@@ -52,7 +52,7 @@ func (s *TestPolicySuite) TestGetPolicyOK() {
 }
 
 func (s *TestPolicySuite) TestUpdatePolicyOK() {
-	policy, policyID := createPermissionWithPolicy(s)
+	policy, policyID := authtest.CreatePermissionWithPolicy(s.T(), configuration)
 	policy.AddUserToPolicy(uuid.NewV4().String())
 	policy.ID = &policyID
 	r := &goa.RequestData{
@@ -70,32 +70,4 @@ func (s *TestPolicySuite) TestUpdatePolicyOK() {
 	require.Equal(s.T(), policy.Config.UserIDs, obtainedPolicy.Config.UserIDs)
 	require.Equal(s.T(), policy.Type, obtainedPolicy.Type)
 	require.Equal(s.T(), policy.Name, obtainedPolicy.Name)
-}
-
-func createPermissionWithPolicy(s *TestPolicySuite) (*auth.KeycloakPolicy, string) {
-	ctx := context.Background()
-	pat := authtest.GetProtectedAPITokenOK(s.T(), configuration)
-
-	resourceID, _ := createResource(s.T(), ctx, pat)
-	clientId, clientsEndpoint := authtest.GetClientIDAndEndpoint(s.T(), configuration)
-	policyID, policy := createPolicy(s.T(), ctx, pat)
-	require.NotNil(s.T(), policy)
-
-	permission := auth.KeycloakPermission{
-		Name:             "test-" + uuid.NewV4().String(),
-		Type:             auth.PermissionTypeResource,
-		Logic:            auth.PolicyLogicPossitive,
-		DecisionStrategy: auth.PolicyDecisionStrategyUnanimous,
-		// "config":{"resources":"[\"<ResourceID>\"]","applyPolicies":"[\"<PolicyID>\"]"}
-		Config: auth.PermissionConfigData{
-			Resources:     "[\"" + resourceID + "\"]",
-			ApplyPolicies: "[\"" + policyID + "\"]",
-		},
-	}
-
-	permissionID, err := auth.CreatePermission(ctx, clientsEndpoint, clientId, permission, pat)
-	require.Nil(s.T(), err)
-	require.NotEqual(s.T(), "", permissionID)
-
-	return &policy, policyID
 }

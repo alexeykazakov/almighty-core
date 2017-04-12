@@ -64,9 +64,18 @@ func (s *TestAuthzSuite) TearDownSuite() {
 
 func (s *TestAuthzSuite) TestFailsIfNoTokenInContext() {
 	ctx := context.Background()
-	spaceID := ""
-	_, err := s.authzService.Authorize(ctx, s.entitlementEndpoint, spaceID)
+	_, err := s.authzService.Authorize(ctx, s.entitlementEndpoint, "")
 	require.NotNil(s.T(), err)
+}
+
+func (s *TestAuthzSuite) TestContext() {
+	// spaceID := ""
+	// priv, _ := almtoken.ParsePrivateKey([]byte(almtoken.RSAPrivateKey))
+	// testIdentity := testsupport.TestIdentity
+	// resource := authtest.CreateSpaceResource(s.T(), s.configuration)
+	// svc := testsupport.ServiceAsUser("SpaceAuthz-Service", almtoken.NewManagerWithPrivateKey(priv), testIdentity)
+	// _, err = s.authzService.Authorize(svc.Context, s.entitlementEndpoint, spaceID)
+	// require.Nil(s.T(), err)
 }
 
 type app struct {

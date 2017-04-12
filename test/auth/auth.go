@@ -9,10 +9,17 @@ import (
 
 	"github.com/almighty/almighty-core/auth"
 	config "github.com/almighty/almighty-core/configuration"
+	"github.com/almighty/almighty-core/controller"
 	"github.com/almighty/almighty-core/rest"
+	"github.com/almighty/almighty-core/space"
 	"github.com/goadesign/goa"
+	"github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	scopes = []string{"read:test", "admin:test"}
 )
 
 type ResourceRequestResultPayload struct {
@@ -110,4 +117,126 @@ func CleanKeycloakResources(t *testing.T, configuration *config.ConfigurationDat
 			DeletePolicy(t, ctx, clientsEndpoint, clientId, policy.ID, pat)
 		}
 	}
+}
+
+func GetUserID(t *testing.T, username string, usersecret string, configuration *config.ConfigurationData) string {
+	r := &goa.RequestData{
+		Request: &http.Request{Host: "domain.io"},
+	}
+
+	tokenEndpoint, err := configuration.GetKeycloakEndpointToken(r)
+	require.Nil(t, err)
+	userinfoEndpoint, err := configuration.GetKeycloakEndpointUserInfo(r)
+	require.Nil(t, err)
+	adminEndpoint, err := configuration.GetKeycloakEndpointAdmin(r)
+	require.Nil(t, err)
+
+	ctx := context.Background()
+	testToken, err := controller.GenerateUserToken(ctx, tokenEndpoint, configuration, username, usersecret)
+	require.Nil(t, err)
+	accessToken := testToken.Token.AccessToken
+	userinfo, err := auth.GetUserInfo(ctx, userinfoEndpoint, *accessToken)
+	require.Nil(t, err)
+	userID := userinfo.Sub
+	pat := GetProtectedAPITokenOK(t, configuration)
+	ok, err := auth.ValidateKeycloakUser(ctx, adminEndpoint, userID, pat)
+	require.Nil(t, err)
+	require.True(t, ok)
+	return userID
+}
+
+func CreatePermissionWithPolicy(t *testing.T, configuration *config.ConfigurationData) (*auth.KeycloakPolicy, string) {
+	ctx := context.Background()
+	pat := GetProtectedAPITokenOK(t, configuration)
+
+	resourceID, _ := CreateResource(t, ctx, pat, configuration)
+	clientID, clientsEndpoint := GetClientIDAndEndpoint(t, configuration)
+	policyID, policy := CreatePolicy(t, ctx, pat, configuration)
+	require.NotNil(t, policy)
+
+	permission := auth.KeycloakPermission{
+		Name:             "test-" + uuid.NewV4().String(),
+		Type:             auth.PermissionTypeResource,
+		Logic:            auth.PolicyLogicPossitive,
+		DecisionStrategy: auth.PolicyDecisionStrategyUnanimous,
+		// "config":{"resources":"[\"<ResourceID>\"]","applyPolicies":"[\"<PolicyID>\"]"}
+		Config: auth.PermissionConfigData{
+			Resources:     "[\"" + resourceID + "\"]",
+			ApplyPolicies: "[\"" + policyID + "\"]",
+		},
+	}
+
+	permissionID, err := auth.CreatePermission(ctx, clientsEndpoint, clientID, permission, pat)
+	require.Nil(t, err)
+	require.NotEqual(t, "", permissionID)
+
+	return &policy, policyID
+}
+
+func CreateResource(t *testing.T, ctx context.Context, pat string, configuration *config.ConfigurationData) (string, string) {
+	r := &goa.RequestData{
+		Request: &http.Request{Host: "domain.io"},
+	}
+	uri := "testResourceURI"
+	kcResource := auth.KeycloakResource{
+		Name:   "test-" + uuid.NewV4().String(),
+		Type:   "testResource",
+		URI:    &uri,
+		Scopes: &scopes,
+	}
+	authzEndpoint, err := configuration.GetKeycloakEndpointAuthzResourceset(r)
+	require.Nil(t, err)
+
+	id, err := auth.CreateResource(ctx, kcResource, authzEndpoint, pat)
+	require.Nil(t, err)
+	require.NotEqual(t, "", id)
+	return id, kcResource.Name
+}
+
+func CreatePolicy(t *testing.T, ctx context.Context, pat string, configuration *config.ConfigurationData) (string, auth.KeycloakPolicy) {
+	firstTestUserID := GetUserID(t, configuration.GetKeycloakTestUserName(), configuration.GetKeycloakTestUserSecret(), configuration)
+	secondTestUserID := GetUserID(t, configuration.GetKeycloakTestUser2Name(), configuration.GetKeycloakTestUser2Secret(), configuration)
+	policy := auth.KeycloakPolicy{
+		Name:             "test-" + uuid.NewV4().String(),
+		Type:             auth.PolicyTypeUser,
+		Logic:            auth.PolicyLogicPossitive,
+		DecisionStrategy: auth.PolicyDecisionStrategyUnanimous,
+	}
+	assert.True(t, policy.AddUserToPolicy(firstTestUserID))
+	assert.True(t, policy.AddUserToPolicy(secondTestUserID))
+
+	clientID, clientsEndpoint := GetClientIDAndEndpoint(t, configuration)
+
+	id, err := auth.CreatePolicy(ctx, clientsEndpoint, clientID, policy, pat)
+	require.Nil(t, err)
+	require.NotEqual(t, "", id)
+	return id, policy
+}
+
+func CreateSpaceResource(t *testing.T, configuration *config.ConfigurationData) space.Resource {
+	ctx := context.Background()
+	pat := GetProtectedAPITokenOK(t, configuration)
+
+	resourceID, _ := CreateResource(t, ctx, pat, configuration)
+	clientID, clientsEndpoint := GetClientIDAndEndpoint(t, configuration)
+	policyID, policy := CreatePolicy(t, ctx, pat, configuration)
+	require.NotNil(t, policy)
+
+	permission := auth.KeycloakPermission{
+		Name:             "test-" + uuid.NewV4().String(),
+		Type:             auth.PermissionTypeResource,
+		Logic:            auth.PolicyLogicPossitive,
+		DecisionStrategy: auth.PolicyDecisionStrategyUnanimous,
+		// "config":{"resources":"[\"<ResourceID>\"]","applyPolicies":"[\"<PolicyID>\"]"}
+		Config: auth.PermissionConfigData{
+			Resources:     "[\"" + resourceID + "\"]",
+			ApplyPolicies: "[\"" + policyID + "\"]",
+		},
+	}
+
+	permissionID, err := auth.CreatePermission(ctx, clientsEndpoint, clientID, permission, pat)
+	require.Nil(t, err)
+	require.NotEqual(t, "", permissionID)
+
+	return space.Resource{ResourceID: resourceID, PermissionID: permissionID, PolicyID: policyID}
 }

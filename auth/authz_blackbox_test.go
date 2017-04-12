@@ -65,7 +65,7 @@ func (s *TestAuthSuite) TestCreateAndDeleteResourceOK() {
 	require.Nil(s.T(), err)
 	pat := authtest.GetProtectedAPITokenOK(s.T(), configuration)
 
-	id, _ := createResource(s.T(), ctx, pat)
+	id, _ := authtest.CreateResource(s.T(), ctx, pat, configuration)
 	authtest.DeleteResource(s.T(), ctx, id, authzEndpoint, pat)
 }
 
@@ -88,12 +88,12 @@ func (s *TestAuthSuite) TestCreatePolicyOK() {
 	pat := authtest.GetProtectedAPITokenOK(s.T(), configuration)
 	clientId, clientsEndpoint := authtest.GetClientIDAndEndpoint(s.T(), configuration)
 
-	id, policy := createPolicy(s.T(), ctx, pat)
+	id, policy := authtest.CreatePolicy(s.T(), ctx, pat, configuration)
 	defer authtest.DeletePolicy(s.T(), ctx, clientsEndpoint, clientId, id, pat)
 
 	pl := validatePolicy(s.T(), ctx, clientsEndpoint, clientId, policy, id, pat)
 
-	firstTestUserID := getUserID(s.T(), configuration.GetKeycloakTestUserName(), configuration.GetKeycloakTestUserSecret())
+	firstTestUserID := authtest.GetUserID(s.T(), configuration.GetKeycloakTestUserName(), configuration.GetKeycloakTestUserSecret(), configuration)
 	pl.Config = auth.PolicyConfigData{
 		UserIDs: "[\"" + firstTestUserID + "\"]",
 	}
@@ -107,7 +107,7 @@ func (s *TestAuthSuite) TestDeletePolicyOK() {
 	pat := authtest.GetProtectedAPITokenOK(s.T(), configuration)
 	clientId, clientsEndpoint := authtest.GetClientIDAndEndpoint(s.T(), configuration)
 
-	id, _ := createPolicy(s.T(), ctx, pat)
+	id, _ := authtest.CreatePolicy(s.T(), ctx, pat, configuration)
 	authtest.DeletePolicy(s.T(), ctx, clientsEndpoint, clientId, id, pat)
 
 	_, err := auth.GetPolicy(ctx, clientsEndpoint, clientId, id, pat)
@@ -125,10 +125,10 @@ func (s *TestAuthSuite) TestCreateAndDeletePermissionOK() {
 	ctx := context.Background()
 	pat := authtest.GetProtectedAPITokenOK(s.T(), configuration)
 
-	resourceID, _ := createResource(s.T(), ctx, pat)
+	resourceID, _ := authtest.CreateResource(s.T(), ctx, pat, configuration)
 	defer authtest.DeleteResource(s.T(), ctx, resourceID, authzEndpoint, pat)
 	clientId, clientsEndpoint := authtest.GetClientIDAndEndpoint(s.T(), configuration)
-	policyID, _ := createPolicy(s.T(), ctx, pat)
+	policyID, _ := authtest.CreatePolicy(s.T(), ctx, pat, configuration)
 	defer authtest.DeletePolicy(s.T(), ctx, clientsEndpoint, clientId, policyID, pat)
 
 	permission := auth.KeycloakPermission{
@@ -177,10 +177,10 @@ func (s *TestAuthSuite) TestGetEntitlement() {
 	ctx := context.Background()
 	pat := authtest.GetProtectedAPITokenOK(s.T(), configuration)
 
-	resourceID, resourceName := createResource(s.T(), ctx, pat)
+	resourceID, resourceName := authtest.CreateResource(s.T(), ctx, pat, configuration)
 	defer authtest.DeleteResource(s.T(), ctx, resourceID, authzEndpoint, pat)
 	clientId, clientsEndpoint := authtest.GetClientIDAndEndpoint(s.T(), configuration)
-	policyID, _ := createPolicy(s.T(), ctx, pat)
+	policyID, _ := authtest.CreatePolicy(s.T(), ctx, pat, configuration)
 	defer authtest.DeletePolicy(s.T(), ctx, clientsEndpoint, clientId, policyID, pat)
 
 	permission := auth.KeycloakPermission{
@@ -218,7 +218,7 @@ func (s *TestAuthSuite) TestGetEntitlement() {
 	require.True(s.T(), ok)
 	require.Nil(s.T(), err)
 
-	secondTestUserID := getUserID(s.T(), configuration.GetKeycloakTestUser2Name(), configuration.GetKeycloakTestUser2Secret())
+	secondTestUserID := authtest.GetUserID(s.T(), configuration.GetKeycloakTestUser2Name(), configuration.GetKeycloakTestUser2Secret(), configuration)
 	pl, err := auth.GetPolicy(ctx, clientsEndpoint, clientId, policyID, pat)
 	pl.Config = auth.PolicyConfigData{
 		UserIDs: "[\"" + secondTestUserID + "\"]",
@@ -348,46 +348,6 @@ func CleanKeycloakResources(t *testing.T) {
 	}
 }
 
-func createResource(t *testing.T, ctx context.Context, pat string) (string, string) {
-	r := &goa.RequestData{
-		Request: &http.Request{Host: "domain.io"},
-	}
-	uri := "testResourceURI"
-	kcResource := auth.KeycloakResource{
-		Name:   "test-" + uuid.NewV4().String(),
-		Type:   "testResource",
-		URI:    &uri,
-		Scopes: &scopes,
-	}
-	authzEndpoint, err := configuration.GetKeycloakEndpointAuthzResourceset(r)
-	require.Nil(t, err)
-
-	id, err := auth.CreateResource(ctx, kcResource, authzEndpoint, pat)
-	require.Nil(t, err)
-	require.NotEqual(t, "", id)
-	return id, kcResource.Name
-}
-
-func createPolicy(t *testing.T, ctx context.Context, pat string) (string, auth.KeycloakPolicy) {
-	firstTestUserID := getUserID(t, configuration.GetKeycloakTestUserName(), configuration.GetKeycloakTestUserSecret())
-	secondTestUserID := getUserID(t, configuration.GetKeycloakTestUser2Name(), configuration.GetKeycloakTestUser2Secret())
-	policy := auth.KeycloakPolicy{
-		Name:             "test-" + uuid.NewV4().String(),
-		Type:             auth.PolicyTypeUser,
-		Logic:            auth.PolicyLogicPossitive,
-		DecisionStrategy: auth.PolicyDecisionStrategyUnanimous,
-	}
-	assert.True(t, policy.AddUserToPolicy(firstTestUserID))
-	assert.True(t, policy.AddUserToPolicy(secondTestUserID))
-
-	clientId, clientsEndpoint := authtest.GetClientIDAndEndpoint(t, configuration)
-
-	id, err := auth.CreatePolicy(ctx, clientsEndpoint, clientId, policy, pat)
-	require.Nil(t, err)
-	require.NotEqual(t, "", id)
-	return id, policy
-}
-
 func deletePermission(t *testing.T, ctx context.Context, clientsEndpoint string, clientId string, id string, pat string) {
 	err := auth.DeletePermission(ctx, clientsEndpoint, clientId, id, pat)
 	assert.Nil(t, err)
@@ -403,32 +363,6 @@ func validatePolicy(t *testing.T, ctx context.Context, clientsEndpoint string, c
 	assert.Equal(t, policyToValidate.DecisionStrategy, pl.DecisionStrategy)
 	assert.Equal(t, policyToValidate.Config.UserIDs, pl.Config.UserIDs)
 	return pl
-}
-
-func getUserID(t *testing.T, username string, usersecret string) string {
-	r := &goa.RequestData{
-		Request: &http.Request{Host: "domain.io"},
-	}
-
-	tokenEndpoint, err := configuration.GetKeycloakEndpointToken(r)
-	require.Nil(t, err)
-	userinfoEndpoint, err := configuration.GetKeycloakEndpointUserInfo(r)
-	require.Nil(t, err)
-	adminEndpoint, err := configuration.GetKeycloakEndpointAdmin(r)
-	require.Nil(t, err)
-
-	ctx := context.Background()
-	testToken, err := controller.GenerateUserToken(ctx, tokenEndpoint, configuration, username, usersecret)
-	require.Nil(t, err)
-	accessToken := testToken.Token.AccessToken
-	userinfo, err := auth.GetUserInfo(ctx, userinfoEndpoint, *accessToken)
-	require.Nil(t, err)
-	userID := userinfo.Sub
-	pat := authtest.GetProtectedAPITokenOK(t, configuration)
-	ok, err := auth.ValidateKeycloakUser(ctx, adminEndpoint, userID, pat)
-	require.Nil(t, err)
-	require.True(t, ok)
-	return userID
 }
 
 type closer struct {
