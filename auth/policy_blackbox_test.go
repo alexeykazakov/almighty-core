@@ -7,6 +7,7 @@ import (
 
 	"github.com/almighty/almighty-core/auth"
 	"github.com/almighty/almighty-core/resource"
+	authtest "github.com/almighty/almighty-core/test/auth"
 	"github.com/goadesign/goa"
 	"github.com/satori/go.uuid"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,7 @@ func (s *TestPolicySuite) SetupSuite() {
 }
 
 func (s *TestPolicySuite) TearDownSuite() {
-	cleanKeycloakResources(s.T())
+	authtest.CleanKeycloakResources(s.T(), configuration)
 }
 
 func (s *TestPolicySuite) TestGetPolicyOK() {
@@ -57,7 +58,7 @@ func (s *TestPolicySuite) TestUpdatePolicyOK() {
 	r := &goa.RequestData{
 		Request: &http.Request{Host: "domain.io"},
 	}
-	pat := getProtectedAPITokenOK(s.T())
+	pat := authtest.GetProtectedAPITokenOK(s.T(), configuration)
 	err := s.policyManager.UpdatePolicy(context.Background(), r, *policy, pat)
 	require.Nil(s.T(), err)
 	obtainedPolicy, newPat, err := s.policyManager.GetPolicy(context.Background(), r, policyID)
@@ -73,10 +74,10 @@ func (s *TestPolicySuite) TestUpdatePolicyOK() {
 
 func createPermissionWithPolicy(s *TestPolicySuite) (*auth.KeycloakPolicy, string) {
 	ctx := context.Background()
-	pat := getProtectedAPITokenOK(s.T())
+	pat := authtest.GetProtectedAPITokenOK(s.T(), configuration)
 
 	resourceID, _ := createResource(s.T(), ctx, pat)
-	clientId, clientsEndpoint := getClientIDAndEndpoint(s.T())
+	clientId, clientsEndpoint := authtest.GetClientIDAndEndpoint(s.T(), configuration)
 	policyID, policy := createPolicy(s.T(), ctx, pat)
 	require.NotNil(s.T(), policy)
 

@@ -16,9 +16,8 @@ import (
 type dummySpaceAuthzService struct {
 }
 
-func (s *dummySpaceAuthzService) Authorize(ctx context.Context, entitlementEndpoint string, spaceID string) (*string, bool, error) {
-	token := ""
-	return &token, true, nil
+func (s *dummySpaceAuthzService) Authorize(ctx context.Context, entitlementEndpoint string, spaceID string) (bool, error) {
+	return true, nil
 }
 
 func (s *dummySpaceAuthzService) Configuration() authz.AuthzConfiguration {
