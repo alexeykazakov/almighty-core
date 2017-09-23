@@ -9,6 +9,7 @@ import (
 	"github.com/fabric8-services/fabric8-wit/account"
 	"github.com/fabric8-services/fabric8-wit/app"
 	"github.com/fabric8-services/fabric8-wit/auth"
+	"github.com/fabric8-services/fabric8-wit/client"
 	"github.com/fabric8-services/fabric8-wit/errors"
 	"github.com/fabric8-services/fabric8-wit/jsonapi"
 	"github.com/fabric8-services/fabric8-wit/log"
@@ -18,6 +19,7 @@ import (
 	"github.com/fabric8-services/fabric8-wit/token"
 
 	"github.com/goadesign/goa"
+	goaclient "github.com/goadesign/goa/client"
 	errs "github.com/pkg/errors"
 )
 
@@ -35,6 +37,7 @@ type loginConfiguration interface {
 	GetAuthEndpointLink(req *http.Request) (string, error)
 	GetAuthEndpointLinksession(req *http.Request) (string, error)
 	GetAuthEndpointTokenRefresh(req *http.Request) (string, error)
+	IsAuthorizationEnabled() bool
 }
 
 // LoginController implements the login resource.
@@ -53,6 +56,35 @@ func NewLoginController(service *goa.Service, auth *login.KeycloakOAuthProvider,
 
 // Authorize runs the authorize action.
 func (c *LoginController) Authorize(ctx *app.AuthorizeLoginContext) error {
+	if !c.configuration.IsAuthorizationEnabled() {
+		// Login as test user
+		cln := client.New(goaclient.HTTPClientDoer(http.DefaultClient))
+		cln.Host = ctx.URL.Host
+		cln.Scheme = ctx.URL.Scheme
+		res, err := cln.GenerateLogin(ctx, client.GenerateLoginPath())
+		if err != nil {
+			return jsonapi.JSONErrorResponse(ctx, err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != 200 {
+			return jsonapi.JSONErrorResponse(ctx, err)
+		}
+		tokens, err := cln.DecodeAuthTokenCollection(res)
+		if err != nil {
+			return jsonapi.JSONErrorResponse(ctx, err)
+		}
+		resultToken := &app.AuthToken{
+			Token: &app.TokenData{
+				AccessToken:      tokens[0].Token.AccessToken,
+				ExpiresIn:        tokens[0].Token.ExpiresIn,
+				RefreshToken:     tokens[0].Token.RefreshToken,
+				RefreshExpiresIn: tokens[0].Token.RefreshExpiresIn,
+				NotBeforePolicy:  tokens[0].Token.NotBeforePolicy,
+				TokenType:        tokens[0].Token.TokenType,
+			},
+		}
+
+	}
 	authEndpoint, err := c.configuration.GetAuthEndpointLogin(ctx.Request)
 	if err != nil {
 		return jsonapi.JSONErrorResponse(ctx, errors.NewInternalError(ctx, err))
