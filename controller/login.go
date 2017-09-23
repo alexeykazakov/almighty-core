@@ -6,36 +6,28 @@ import (
 	er "errors"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/fabric8-services/fabric8-wit/account"
 	"github.com/fabric8-services/fabric8-wit/app"
-	"github.com/fabric8-services/fabric8-wit/auth"
 	"github.com/fabric8-services/fabric8-wit/client"
 	"github.com/fabric8-services/fabric8-wit/errors"
 	"github.com/fabric8-services/fabric8-wit/goasupport"
 	"github.com/fabric8-services/fabric8-wit/jsonapi"
 	"github.com/fabric8-services/fabric8-wit/log"
 	"github.com/fabric8-services/fabric8-wit/login"
-	"github.com/fabric8-services/fabric8-wit/rest"
-	"github.com/fabric8-services/fabric8-wit/test"
+	generate "github.com/fabric8-services/fabric8-wit/test/token"
 	"github.com/fabric8-services/fabric8-wit/token"
 
 	"github.com/goadesign/goa"
 	goaclient "github.com/goadesign/goa/client"
 	errs "github.com/pkg/errors"
+	"github.com/satori/go.uuid"
 )
 
 type loginConfiguration interface {
-	GetKeycloakEndpointToken(*http.Request) (string, error)
-	GetKeycloakAccountEndpoint(req *http.Request) (string, error)
-	GetKeycloakClientID() string
-	GetKeycloakSecret() string
 	IsPostgresDeveloperModeEnabled() bool
 	GetKeycloakTestUserName() string
-	GetKeycloakTestUserSecret() string
 	GetKeycloakTestUser2Name() string
-	GetKeycloakTestUser2Secret() string
 	GetAuthEndpointLogin(*http.Request) (string, error)
 	GetAuthEndpointLink(req *http.Request) (string, error)
 	GetAuthEndpointLinksession(req *http.Request) (string, error)
@@ -146,17 +138,6 @@ func (c *LoginController) Refresh(ctx *app.RefreshLoginContext) error {
 	return ctx.TemporaryRedirect()
 }
 
-func convertToken(token auth.Token) *app.AuthToken {
-	return &app.AuthToken{Token: &app.TokenData{
-		AccessToken:      token.AccessToken,
-		ExpiresIn:        token.ExpiresIn,
-		NotBeforePolicy:  token.NotBeforePolicy,
-		RefreshExpiresIn: token.RefreshExpiresIn,
-		RefreshToken:     token.RefreshToken,
-		TokenType:        token.TokenType,
-	}}
-}
-
 // Link links identity provider(s) to the user's account
 func (c *LoginController) Link(ctx *app.LinkLoginContext) error {
 	authEndpoint, err := c.configuration.GetAuthEndpointLink(ctx.RequestData.Request)
@@ -189,15 +170,7 @@ func (c *LoginController) Linksession(ctx *app.LinksessionLoginContext) error {
 func (c *LoginController) Generate(ctx *app.GenerateLoginContext) error {
 	var tokens app.AuthTokenCollection
 
-	tokenEndpoint, err := c.configuration.GetKeycloakEndpointToken(ctx.Request)
-	if err != nil {
-		log.Error(ctx, map[string]interface{}{
-			"err": err,
-		}, "unable to get Keycloak token endpoint URL")
-		return jsonapi.JSONErrorResponse(ctx, errors.NewInternalError(ctx, errs.Wrap(err, "unable to get Keycloak token endpoint URL")))
-	}
-
-	testuser, err := GenerateUserToken(ctx, tokenEndpoint, c.configuration, c.configuration.GetKeycloakTestUserName(), c.configuration.GetKeycloakTestUserSecret())
+	testuser, err := GenerateUserToken(ctx, c.configuration, c.configuration.GetKeycloakTestUserName())
 	if err != nil {
 		log.Error(ctx, map[string]interface{}{
 			"err":      err,
@@ -206,17 +179,10 @@ func (c *LoginController) Generate(ctx *app.GenerateLoginContext) error {
 		return jsonapi.JSONErrorResponse(ctx, errors.NewInternalError(ctx, errs.Wrap(err, "unable to generate test token ")))
 	}
 	// Creates the testuser user and identity if they don't yet exist
-	profileEndpoint, err := c.configuration.GetKeycloakAccountEndpoint(ctx.Request)
-	if err != nil {
-		log.Error(ctx, map[string]interface{}{
-			"err": err,
-		}, "unable to get Keycloak account endpoint URL")
-		return jsonapi.JSONErrorResponse(ctx, errors.NewInternalError(ctx, err))
-	}
-	c.auth.CreateOrUpdateKeycloakUser(*testuser.Token.AccessToken, ctx, profileEndpoint)
+	c.auth.CreateOrUpdateKeycloakUser(*testuser.Token.AccessToken, ctx)
 	tokens = append(tokens, testuser)
 
-	testuser, err = GenerateUserToken(ctx, tokenEndpoint, c.configuration, c.configuration.GetKeycloakTestUser2Name(), c.configuration.GetKeycloakTestUser2Secret())
+	testuser, err = GenerateUserToken(ctx, c.configuration, c.configuration.GetKeycloakTestUser2Name())
 	if err != nil {
 		log.Error(ctx, map[string]interface{}{
 			"err":      err,
@@ -225,7 +191,7 @@ func (c *LoginController) Generate(ctx *app.GenerateLoginContext) error {
 		return jsonapi.JSONErrorResponse(ctx, errors.NewInternalError(ctx, errs.Wrap(err, "unable to generate test token")))
 	}
 	// Creates the testuser2 user and identity if they don't yet exist
-	c.auth.CreateOrUpdateKeycloakUser(*testuser.Token.AccessToken, ctx, profileEndpoint)
+	c.auth.CreateOrUpdateKeycloakUser(*testuser.Token.AccessToken, ctx)
 	tokens = append(tokens, testuser)
 
 	ctx.ResponseData.Header().Set("Cache-Control", "no-cache")
@@ -233,48 +199,27 @@ func (c *LoginController) Generate(ctx *app.GenerateLoginContext) error {
 }
 
 // GenerateUserToken obtains the access token from Keycloak for the user
-func GenerateUserToken(ctx context.Context, tokenEndpoint string, configuration loginConfiguration, username string, userSecret string) (*app.AuthToken, error) {
+func GenerateUserToken(ctx context.Context, configuration loginConfiguration, username string) (*app.AuthToken, error) {
 	if !configuration.IsPostgresDeveloperModeEnabled() {
 		log.Error(ctx, map[string]interface{}{
 			"method": "Generate",
-		}, "Postgres developer mode not enabled")
+		}, "Developer mode not enabled")
 		return nil, errors.NewInternalError(ctx, errs.New("postgres developer mode is not enabled"))
 	}
 
-	var scopes []account.Identity
-	scopes = append(scopes, test.TestIdentity)
-	scopes = append(scopes, test.TestObserverIdentity)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-
-	res, err := client.PostForm(tokenEndpoint, url.Values{
-		"client_id":     {configuration.GetKeycloakClientID()},
-		"client_secret": {configuration.GetKeycloakSecret()},
-		"username":      {username},
-		"password":      {userSecret},
-		"grant_type":    {"password"},
-	})
+	key := generate.PrivateKey()
+	token, err := generate.GenerateToken(uuid.NewV4().String(), username, key)
 	if err != nil {
-		return nil, errors.NewInternalError(ctx, errs.Wrap(err, "error when obtaining token"))
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		log.Error(ctx, map[string]interface{}{
-			"response_status": res.Status,
-			"response_body":   rest.ReadBody(res.Body),
-			"username":        username,
-		}, "unable to obtain token")
-		return nil, errors.NewInternalError(ctx, errs.Errorf("unable to obtain token. Response status: %s. Responce body: %s", res.Status, rest.ReadBody(res.Body)))
-	}
-	token, err := auth.ReadToken(ctx, res)
-	if err != nil {
-		log.Error(ctx, map[string]interface{}{
-			"token_endpoint": res,
-			"err":            err,
-			"username":       username,
-		}, "error when unmarshal json with access token")
-		return nil, errors.NewInternalError(ctx, errs.Wrap(err, "error when unmarshal json with access token"))
+		return nil, err
 	}
 
-	return convertToken(*token), nil
+	bearer := "Bearer"
+	return &app.AuthToken{Token: &app.TokenData{
+		AccessToken:      &token,
+		ExpiresIn:        60 * 60 * 24 * 30,
+		NotBeforePolicy:  0,
+		RefreshExpiresIn: 60 * 60 * 24 * 30,
+		RefreshToken:     &token,
+		TokenType:        &bearer,
+	}}, nil
 }
