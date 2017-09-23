@@ -10,7 +10,6 @@ import (
 	"github.com/fabric8-services/fabric8-wit/account"
 	"github.com/fabric8-services/fabric8-wit/app"
 	"github.com/fabric8-services/fabric8-wit/application"
-	"github.com/fabric8-services/fabric8-wit/auth"
 	errs "github.com/fabric8-services/fabric8-wit/errors"
 	"github.com/fabric8-services/fabric8-wit/jsonapi"
 	"github.com/fabric8-services/fabric8-wit/log"
@@ -22,9 +21,8 @@ import (
 // CollaboratorsController implements the collaborators resource.
 type CollaboratorsController struct {
 	*goa.Controller
-	db            application.DB
-	config        CollaboratorsConfiguration
-	policyManager auth.AuthzPolicyManager
+	db     application.DB
+	config CollaboratorsConfiguration
 }
 
 type CollaboratorsConfiguration interface {
@@ -40,8 +38,8 @@ type collaboratorContext interface {
 }
 
 // NewCollaboratorsController creates a collaborators controller.
-func NewCollaboratorsController(service *goa.Service, db application.DB, config CollaboratorsConfiguration, policyManager auth.AuthzPolicyManager) *CollaboratorsController {
-	return &CollaboratorsController{Controller: service.NewController("CollaboratorsController"), db: db, config: config, policyManager: policyManager}
+func NewCollaboratorsController(service *goa.Service, db application.DB, config CollaboratorsConfiguration) *CollaboratorsController {
+	return &CollaboratorsController{Controller: service.NewController("CollaboratorsController"), db: db, config: config}
 }
 
 type redirectContext interface {

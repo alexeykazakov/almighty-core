@@ -31,7 +31,7 @@ func (rest *TestCollaboratorsREST) TearDownTest() {
 
 func (rest *TestCollaboratorsREST) UnSecuredController() (*goa.Service, *CollaboratorsController) {
 	svc := testsupport.ServiceAsUser("Logout-Service", testsupport.TestIdentity)
-	return svc, NewCollaboratorsController(svc, nil, rest.config, nil)
+	return svc, NewCollaboratorsController(svc, nil, rest.config)
 }
 
 func (rest *TestCollaboratorsREST) TestListRedirect() {

@@ -6,17 +6,18 @@ import (
 	"fmt"
 
 	authclient "github.com/fabric8-services/fabric8-auth/token"
+	"github.com/fabric8-services/fabric8-wit/configuration"
 	"github.com/fabric8-services/fabric8-wit/log"
 	"github.com/fabric8-services/fabric8-wit/login/tokencontext"
 
-	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/dgrijalva/jwt-go"
 	goajwt "github.com/goadesign/goa/middleware/security/jwt"
 	"github.com/pkg/errors"
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 )
 
-// configuration represents configuration needed to construct a token manager
-type configuration interface {
+// tokenManagerConfiguration represents configuration needed to construct a token manager
+type tokenManagerConfiguration interface {
 	GetKeysEndpoint() string
 	GetKeycloakDevModeURL() string
 }
@@ -65,7 +66,7 @@ type tokenManager struct {
 }
 
 // NewManager returns a new token Manager for handling tokens
-func NewManager(config configuration) (Manager, error) {
+func NewManager(config tokenManagerConfiguration) (Manager, error) {
 	// Load public keys from Auth service and add them to the manager
 	tm := &tokenManager{
 		publicKeysMap: map[string]*rsa.PublicKey{},
@@ -93,7 +94,7 @@ func NewManager(config configuration) (Manager, error) {
 			log.Error(nil, map[string]interface{}{
 				"keys_url": devModeURL,
 			}, "unable to load public keys from remote service in Dev Mode")
-			return nil, errors.New("unable to load public keys from remote service  in Dev Mode")
+			return nil, errors.New("unable to load public keys from remote service in Dev Mode")
 		}
 		for _, remoteKey := range remoteKeys {
 			tm.publicKeysMap[remoteKey.KeyID] = remoteKey.Key
@@ -102,6 +103,16 @@ func NewManager(config configuration) (Manager, error) {
 				"kid": remoteKey.KeyID,
 			}, "Public key added")
 		}
+		// Add the public key which will be used to verify tokens generated in dev mode
+		rsaKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(configuration.DevModeRsaPrivateKey))
+		if err != nil {
+			return nil, err
+		}
+		tm.publicKeysMap["test-key"] = &rsaKey.PublicKey
+		tm.publicKeys = append(tm.publicKeys, &PublicKey{KeyID: "test-key", Key: &rsaKey.PublicKey})
+		log.Info(nil, map[string]interface{}{
+			"kid": "test-key",
+		}, "Public key added")
 	}
 
 	return tm, nil
